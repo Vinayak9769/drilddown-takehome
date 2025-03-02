@@ -1,0 +1,160 @@
+[
+  {
+    "id": 1,
+    "title": "Sales Report (Overall)",
+    "type": "Report",
+    "general_description": "This section provides reports related to sales data, flagged for potential issues."
+  },
+  {
+    "id": 2,
+    "title": "Red Flag (Group Header)",
+    "type": "Flag",
+    "general_description": "These are critical issues requiring immediate attention."
+  },
+  {
+    "id": 3,
+    "title": "Red Flag – Bill Modifications",
+    "general_description": "Lists bills that have been modified, focusing on cash payments and significant amount changes. Indicates potential tampering.",
+    "details": "SELECT DISTINCT Timestamp, electron_pos, Date, modified_by, bill_no, Payment_Type, Area, Table_No_, amount_from, amount_to, CASE WHEN amount_from = 0 THEN NULL ELSE ABS((amount_from - amount_to) * 100.0 / amount_from) END AS Percentage_Change, ((strftime('%s', electron_pos) - strftime('%s', Timestamp)) / 60) AS Time_Difference, modify_comment, Name AS Customer_Name FROM orders WHERE modified_by IS NOT NULL AND (lower(Area) NOT LIKE '%swiggy%' AND lower(Area) NOT LIKE '%zomato%') AND lower(Payment_Type) = 'cash' ORDER BY bill_no ASC;"
+  },
+  {
+    "id": 4,
+    "title": "Red Flag – Cancelled Orders",
+    "general_description": "Details about orders that have been cancelled. Focuses on reasons and associated staff.",
+    "query": "SELECT COUNT(DISTINCT Timestamp) AS CancelledCount FROM orders WHERE Status = 'Cancelled';",
+    "details": "SELECT DISTINCT Timestamp, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END AS Staff, Settled_By_BSR, area_co, order_cancel_reason_co, Cancelled_Invoice_Total_co FROM orders WHERE Status = 'Cancelled';"
+  },
+  {
+    "id": 5,
+    "title": "Red Flag – Discounts",
+    "general_description": "Lists discounts given, particularly where customer details are missing. May indicate unauthorized discounts.",
+    "details": "SELECT Timestamp, Invoice_No_, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END AS Staff, group_concat(DISTINCT Item_Name) AS Items, SUM(Qty_) AS Total_Qty, Area, Table_No_, Payment_Type, SUM(Discount) AS Total_Discount, Reason_DSR, SUM(Sub_Total) AS SUM_Sub_Total, SUM(Final_Total) AS SUM_Final_Total, CASE WHEN SUM(Sub_Total) = 0 THEN NULL ELSE (SUM(Discount)*100.0 / SUM(Sub_Total)) END AS Discount_Percentage, Name, Phone, Covers FROM orders WHERE COALESCE(Discount, 0) > 0.0 AND (Name IS NULL OR Phone IS NULL OR lower(Name) = 'nan' OR Covers IS NULL OR Covers = 0.0) AND Order_Type LIKE '%Din%' AND lower(Payment_Type) = 'cash' GROUP BY Timestamp, Invoice_No_, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END, Area, Table_No_, Payment_Type, Reason_DSR, Name, Phone, Covers;"
+  },
+  {
+    "id": 6,
+    "title": "Red Flag – NC and Complimentry",
+    "general_description": "Details about items given as 'No Charge' (NC) or Complimentary. Helps track potential waste or misuse.",
+    "details": "SELECT Invoice_No_, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END AS Staff, Name AS Customer_Name, Phone, Item_Name, SUM(Qty_) AS Quantity, SUM(Sub_Total) AS Sum_of_Sub_Total FROM orders WHERE Sub_Total <= 0 AND Status = 'Complimentary' GROUP BY Invoice_No_, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END, Name, Phone, Item_Name ORDER BY Invoice_No_ ASC;"
+  },
+  {
+    "id": 7,
+    "title": "Red Flag – Complimentary Bills",
+    "general_description": "Provides a list of bills that were marked as complimentary, usually given to VIP guests or for marketing purposes.",
+    "details": "SELECT Timestamp, Invoice_No_, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END AS Staff, Name AS Customer_Name, Status, Area, Table_No_, group_concat(DISTINCT Item_Name) AS Item_Names, SUM(Sub_Total) AS Total_Amount, SUM(Qty_) AS Total_Quantity FROM orders WHERE Status = 'Complimentary' GROUP BY Timestamp, Invoice_No_, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END, Name, Status, Area, Table_No_ ORDER BY Invoice_No_ ASC, Item_Names ASC;"
+  },
+  {
+    "id": 8,
+    "title": "Red Flag – NC Item",
+    "general_description": "Gives a detailed breakdown of items that were given without charge, useful in identifying potential inconsistencies or abuse.",
+    "details": "SELECT Date, Invoice_No_, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END AS Staff, Name AS Customer_Name, Phone, Status, Area, Table_No_, Item_Name, SUM(Sub_Total) AS Sum_of_Sub_Total, Qty_ AS Quantity FROM orders WHERE Sub_Total <= 0 AND Status = 'Success' GROUP BY Date, Invoice_No_, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END, Name, Item_Name, Phone, Status, Area, Table_No_, Qty_ ORDER BY Invoice_No_ ASC;"
+  },
+  {
+    "id": 9,
+    "title": "Red Flag – Poor Feedback",
+    "general_description": "Identifies instances where both food and service feedback were poor. Highlights areas for improvement.",
+    "details": "SELECT Timestamp, Date, Invoice_No_, Item_Name, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END AS Staff, Table_No_, Payment_Type, Area, Final_Total, Status, Customer_Name_ff, Customer_Phone_ff, From__ff, Answer_ff AS Food_Feedback, Answer_sf AS Service_Feedback FROM orders WHERE (Answer_ff = 'Poor' OR Answer_ff = 'Very Poor') AND (Answer_sf = 'Poor' OR Answer_sf = 'Very Poor');"
+  },
+  {
+    "id": 10,
+    "title": "Red Flag – Bill Settelment More than 15min",
+    "general_description": "Lists bills that took longer than 15 minutes to settle, suggesting potential bottlenecks or inefficiencies in the payment process. This focuses on cash transactions.",
+    "details": "SELECT Date, Timestamp, Invoice_No_, Name, Phone, Area, Table_No_, Payment_Type, group_concat(Item_Name) AS Ordered_Items, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END AS Staff, Settled_By_BSR AS Bill_Settled_By, CAST(Duration__In_Minutes_BSR AS INTEGER) AS Duration_In_Minutes FROM orders WHERE CAST(Duration__In_Minutes_BSR AS INTEGER) >= 15 AND CAST(Duration__In_Minutes_BSR AS INTEGER) <= 35 AND Settled_By_BSR IS NOT NULL AND Order_Type LIKE '%Din%' AND lower(Payment_Type) = 'cash' GROUP BY Date, Timestamp, Invoice_No_, Name, Phone, Area, Table_No_, Payment_Type, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END, Settled_By_BSR, CAST(Duration__In_Minutes_BSR AS INTEGER) ORDER BY Duration_In_Minutes DESC, Invoice_No_;"
+  },
+  {
+    "id": 11,
+    "title": "Red Flag – Bill Settelment Less than 30secs",
+    "general_description": "Lists bills that were settled very quickly (less than 30 seconds), which may indicate rushed transactions or potential errors. This focuses on card payments.",
+    "details": "SELECT Date, Timestamp, Invoice_No_, Name, Phone, Area, Table_No_, Payment_Type, group_concat(Item_Name) AS Ordered_Items, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END AS Staff, Settled_By_BSR AS Bill_Settled_By, (strftime('%s', Last_Settlement_Date_BSR) - strftime('%s', First_Print_Date_BSR)) AS Duration_In_Seconds FROM orders WHERE (strftime('%s', Last_Settlement_Date_BSR) - strftime('%s', First_Print_Date_BSR)) <= 30 AND Settled_By_BSR IS NOT NULL AND Order_Type LIKE '%Din%' GROUP BY Date, Timestamp, Invoice_No_, Name, Phone, Area, Table_No_, Payment_Type, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END, Settled_By_BSR, Last_Settlement_Date_BSR, First_Print_Date_BSR ORDER BY Duration_In_Seconds DESC, Invoice_No_;"
+  },
+  {
+    "id": 12,
+    "title": "Red Flag – Due Payments",
+    "general_description": "Details about sales that have been marked as 'Due Payment' (payment not received). Helps track outstanding debts.",
+    "details": "SELECT Timestamp, Date, Invoice_No_, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END AS Staff, Settled_By_BSR, Name, Phone, Item_Name, Price, Qty_, Sub_Total, Tax, Final_Total FROM orders WHERE Payment_Type = 'Due Payment' ORDER BY Timestamp;"
+  },
+  {
+    "id": 13,
+    "title": "Red Flag – SC Removed",
+    "general_description": "Shows instances where service charge was removed from a bill, along with customer feedback. Helps understand reasons for removal.",
+    "details": "SELECT Timestamp, Invoice_No_, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END AS Staff, Settled_By_BSR AS Settled_By, Payment_Type, SUM(Sub_Total) AS Total_Sales, Service_Charge_Rate, (SUM(Sub_Total)*Service_Charge_Rate/100.0) AS Calculated_Service_Charge_Amount, Answer_sf AS Service_Feedback, Answer_ff AS Food_Feedback, Table_No_ AS TABLE, Area, group_concat(DISTINCT Item_Name) AS Items, modify_comment FROM orders WHERE Service_Charge_Amount = 0 AND price != 0 AND Status = 'Success' AND Order_Type LIKE '%Din%' AND lower(Payment_Type) = 'cash' GROUP BY Timestamp, Invoice_No_, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END, Service_Charge_Rate, Settled_By_BSR, Payment_Type, Answer_sf, Answer_ff, Table_No_, Area, modify_comment ORDER BY Timestamp ASC;"
+  },
+  {
+    "id": 14,
+    "title": "Orange Flag (Group Header)",
+    "type": "Flag",
+    "general_description": "These issues require investigation and could escalate to red flags."
+  },
+  {
+    "id": 15,
+    "title": "Orange Flag – Bill Modifications",
+    "general_description": "Lists bills that have been modified, indicating potential irregularities.",
+    "details": "SELECT DISTINCT Timestamp, electron_pos, Date, modified_by, bill_no, Payment_Type, Area, Table_No_, amount_from, amount_to, CASE WHEN amount_from = 0 THEN NULL ELSE ABS((amount_from - amount_to) * 100.0 / amount_from) END AS Percentage_Change, ((strftime('%s', electron_pos) - strftime('%s', Timestamp)) / 60) AS Time_Difference FROM orders WHERE modified_by IS NOT NULL AND (lower(Area) NOT LIKE '%swiggy%' AND lower(Area) NOT LIKE '%zomato%') ORDER BY bill_no ASC;"
+  },
+  {
+    "id": 16,
+    "title": "Orange Flag – Discounts",
+    "general_description": "Lists discounts given, especially where customer details are missing. May point to unauthorized discounts.",
+    "details": "SELECT Timestamp, Invoice_No_, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END AS Staff, group_concat(DISTINCT Item_Name) AS Items, SUM(Qty_) AS Total_Qty, Area, Table_No_, Payment_Type, SUM(Discount) AS Total_Discount, Reason_DSR, SUM(Sub_Total) AS SUM_Sub_Total, SUM(Final_Total) AS SUM_Final_Total, CASE WHEN SUM(Sub_Total) = 0 THEN NULL ELSE (SUM(Discount)*100.0 / SUM(Sub_Total)) END AS Discount_Percentage, Name, Phone, Covers FROM orders WHERE COALESCE(Discount,0) > 0.0 AND (Name IS NULL OR Phone IS NULL OR lower(Name) = 'nan' OR Covers IS NULL OR Covers = 0.0) AND Order_Type LIKE '%Din%' GROUP BY Timestamp, Invoice_No_, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END, Area, Table_No_, Payment_Type, Reason_DSR, Name, Phone, Covers;"
+  },
+  {
+    "id": 17,
+    "title": "Orange Flag – Poor Feedback",
+    "general_description": "Identifies instances where food or service feedback was poor or average. Indicates areas for potential improvements.",
+    "details": "SELECT Timestamp, Date, Invoice_No_, Item_Name, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END AS Staff, Table_No_, Payment_Type, Area, Final_Total, Status, Customer_Name_ff, Customer_Phone_ff, From__ff, Answer_ff AS Food_Feedback, Answer_sf AS Service_Feedback FROM orders WHERE (Answer_ff = 'Poor' OR Answer_ff = 'Average' OR Answer_ff = 'Very Poor') AND (Answer_sf = 'Poor' OR Answer_sf = 'Average' OR Answer_sf = 'Very Poor');"
+  },
+  {
+    "id": 18,
+    "title": "Orange Flag – Bill Settelment More than 15min",
+    "general_description": "Lists bills that took longer than 15 minutes to settle, indicating potential bottlenecks in the payment process.",
+    "details": "SELECT Date, Timestamp, Invoice_No_, Name, Phone, Area, Table_No_, Payment_Type, group_concat(Item_Name) AS Ordered_Items, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END AS Staff, Settled_By_BSR AS Bill_Settled_By, CAST(Duration__In_Minutes_BSR AS INTEGER) AS Duration_In_Minutes FROM orders WHERE CAST(Duration__In_Minutes_BSR AS INTEGER) >= 15 AND CAST(Duration__In_Minutes_BSR AS INTEGER) <= 35 AND Settled_By_BSR IS NOT NULL AND Order_Type LIKE '%Din%' GROUP BY Date, Timestamp, Invoice_No_, Name, Phone, Area, Table_No_, Payment_Type, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END, Settled_By_BSR, CAST(Duration__In_Minutes_BSR AS INTEGER) ORDER BY Duration_In_Minutes DESC, Invoice_No_;"
+  },
+  {
+    "id": 19,
+    "title": "Orange Flag – Bill Settelment Less than 30secs",
+    "general_description": "Lists bills that were settled very quickly (less than 30 seconds), which may indicate rushed transactions or errors.",
+    "details": "SELECT Date, Timestamp, Invoice_No_, Name, Phone, Area, Table_No_, Payment_Type, group_concat(Item_Name) AS Ordered_Items, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END AS Staff, Settled_By_BSR AS Bill_Settled_By, (strftime('%s', Last_Settlement_Date_BSR) - strftime('%s', First_Print_Date_BSR)) AS Duration_In_Seconds FROM orders WHERE (strftime('%s', Last_Settlement_Date_BSR) - strftime('%s', First_Print_Date_BSR)) <= 30 AND Settled_By_BSR IS NOT NULL AND Order_Type LIKE '%Din%' GROUP BY Date, Timestamp, Invoice_No_, Name, Phone, Area, Table_No_, Payment_Type, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END, Settled_By_BSR, Last_Settlement_Date_BSR, First_Print_Date_BSR ORDER BY Duration_In_Seconds DESC, Invoice_No_;"
+  },
+  {
+    "id": 20,
+    "title": "Orange Flag – SC Removed",
+    "general_description": "Shows instances where the service charge was removed from a bill, along with customer feedback.",
+    "details": "SELECT Timestamp, Invoice_No_, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END AS Staff, Settled_By_BSR AS Settled_By, Payment_Type, SUM(Sub_Total) AS Total_Sales, Service_Charge_Rate, (SUM(Sub_Total)*Service_Charge_Rate/100.0) AS Calculated_Service_Charge_Amount, Answer_sf AS Service_Feedback, Answer_ff AS Food_Feedback, Table_No_ AS TABLE, Area, group_concat(DISTINCT Item_Name) AS Items, modify_comment FROM orders WHERE Service_Charge_Amount = 0 AND price != 0 AND Status = 'Success' AND Order_Type LIKE '%Din%' GROUP BY Timestamp, Invoice_No_, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END, Service_Charge_Rate, Settled_By_BSR, Payment_Type, Answer_sf, Answer_ff, Table_No_, Area, modify_comment ORDER BY Timestamp ASC;"
+  },
+
+  {
+    "id": 22,
+    "title": "Yellow Flag",
+    "general_description": "These issues require further investigation and could potentially become red flags.",
+    "details": "SELECT * FROM ( SELECT 'Summery' AS Type, COUNT(DISTINCT Timestamp) AS No_of_Bills, NULL AS Timestamp, NULL AS Invoice_No_, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END AS Staff, NULL AS Name, NULL AS Phone, SUM(PAX) AS Covers FROM orders WHERE (Name IS NULL OR lower(Name) = 'nan') GROUP BY Assign_To UNION ALL SELECT DISTINCT 'Details' AS Type, NULL AS No_of_Bills, Timestamp, Invoice_No_, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END AS Staff, Name, Phone, Covers FROM orders WHERE (Name IS NULL OR lower(Name) = 'nan') ) ORDER BY Type DESC;"
+  },
+  {
+    "id": 23,
+    "title": "No Number",
+    "general_description": "This report highlights bills where the customer's phone number is missing, which can be an issue for loyalty programs or tracking.",
+    "details": "SELECT * FROM ( SELECT 'Summery' AS Type, COUNT(DISTINCT Timestamp) AS No_of_Bills, NULL AS Timestamp, NULL AS Invoice_No_, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END AS Staff, NULL AS Name, NULL AS Phone, SUM(PAX) AS Covers FROM orders WHERE (Phone IS NULL) AND Order_Type LIKE '%Din%' AND Status = 'Success' GROUP BY Assign_To UNION ALL SELECT DISTINCT 'Details' AS Type, NULL AS No_of_Bills, Timestamp, Invoice_No_, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END AS Staff, Name, Phone, Covers FROM orders WHERE (Phone IS NULL) AND Order_Type LIKE '%Din%' AND Status = 'Success' ) ORDER BY Type DESC;"
+  },
+  {
+    "id": 24,
+    "title": "No Covers",
+    "general_description": "Highlights bills without a 'Covers' count (number of guests), making analysis of average spending per guest difficult.",
+    "details": "SELECT * FROM ( SELECT 'Summery' AS Type, COUNT(DISTINCT Timestamp) AS No_of_Bills, NULL AS Timestamp, NULL AS Invoice_No_, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END AS Staff, NULL AS Name, NULL AS Phone, SUM(PAX) AS Covers FROM orders WHERE (Covers IS NULL OR Covers = 0.0) AND Order_Type LIKE '%Din%' AND Status = 'Success' GROUP BY Assign_To UNION ALL SELECT DISTINCT 'Details' AS Type, NULL AS No_of_Bills, Timestamp, Invoice_No_, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END AS Staff, Name, Phone, Covers FROM orders WHERE (Covers IS NULL OR Covers = 0.0) AND Order_Type LIKE '%Din%' AND Status = 'Success' ) ORDER BY Type DESC;"
+  },
+  {
+    "id": 25,
+    "title": "No Feedback",
+    "general_description": "Lists bills where no customer feedback was recorded, potentially missing opportunities for improvement.",
+    "details": "SELECT * FROM ( SELECT 'Summery' AS Type, COUNT(DISTINCT Timestamp) AS No_of_Bills, NULL AS Timestamp, NULL AS Invoice_No_, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END AS Staff, NULL AS Name, NULL AS Phone, SUM(PAX) AS Total_PAX FROM orders WHERE (Answer_sf IS NULL OR lower(Answer_sf) = 'nan' OR Answer_ff IS NULL OR lower(Answer_ff) = 'nan') AND Order_Type LIKE '%Din%' AND Status = 'Success' GROUP BY Assign_To UNION ALL SELECT DISTINCT 'Details' AS Type, NULL AS No_of_Bills, Timestamp, Invoice_No_, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END AS Staff, Name, Phone, Covers FROM orders WHERE (Answer_sf IS NULL OR lower(Answer_sf) = 'nan' OR Answer_ff IS NULL OR lower(Answer_ff) = 'nan') AND Order_Type LIKE '%Din%' AND Status = 'Success' ) ORDER BY Type DESC;"
+  },
+  {
+    "id": 26,
+    "title": "Discount (Standalone)",
+    "general_description": "This report shows all discount applied where no discount is applied to a bill but there is a reason defined for discount.",
+    "details": "SELECT Timestamp, Invoice_No_, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END AS Staff, Settled_By_BSR AS Settled_By, SUM(Sub_Total) AS Total_Sales, SUM(Discount) AS Total_Discount, CASE WHEN SUM(Sub_Total) = 0 THEN NULL ELSE (SUM(Discount)*100.0/SUM(Sub_Total)) END AS Percentage, Reason_DSR AS Reason, Area, Table_No_, group_concat(DISTINCT Item_Name) AS Items FROM orders WHERE Reason_DSR IS NULL AND Discount > 0 AND Order_Type LIKE '%Din%' GROUP BY Timestamp, Invoice_No_, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END, Settled_By_BSR, Reason_DSR, Area, Table_No_ ORDER BY Timestamp;"
+  },
+  {
+    "id": 27,
+    "title": "Cancelled Orders (Standalone)",
+    "general_description": "Here details about orders that have been cancelled when the cancel reason is not available.",
+    "details": "SELECT DISTINCT Timestamp, CASE WHEN lower(Assign_To) LIKE '%nan%' OR Assign_To = '' THEN 'Multiple' ELSE Assign_To END AS Staff, Settled_By_BSR, area_co, order_cancel_reason_co, Cancelled_Invoice_Total_co FROM orders WHERE Status = 'Cancelled' AND order_cancel_reason_co IS NULL;"
+  }
+]
