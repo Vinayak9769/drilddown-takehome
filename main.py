@@ -3,8 +3,10 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from chains.text_to_sql import create_text_to_sql_chain, print_all_documents_metadata
 from chains.sql_executor import sql_executor_chain
 from chains.pdf_generator import pdf_generation_chain
+from chains.html_generator import html_generation_chain
 from utils.data_loader import create_docs
 import argparse
+from langchain_core.runnables import RunnableLambda
 
 data_file = "data/reports.json"
 docs = create_docs(data_file)
@@ -17,7 +19,14 @@ print_all_documents_metadata(vectorstore)
 
 text_to_sql_chain = create_text_to_sql_chain(retriever)
 
-final_chain = text_to_sql_chain | sql_executor_chain | pdf_generation_chain
+def generate_both_formats(output):
+    pdf_path = pdf_generation_chain.invoke(output)
+    html_path = html_generation_chain.invoke(output)
+    return {"pdf": pdf_path, "html": html_path}
+
+dual_format_chain = RunnableLambda(func=generate_both_formats)
+
+final_chain = text_to_sql_chain | sql_executor_chain | dual_format_chain
 
 def main():
     parser = argparse.ArgumentParser(description='Natural Language to SQL Report Generator')
